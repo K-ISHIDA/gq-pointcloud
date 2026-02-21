@@ -9,6 +9,11 @@ import pdal
 # Parameter definitions
 # -------------------------------
 
+class FilterType:
+    EXPRESSION = "filters.expression"
+    UNIQUE = "filters.unique"
+    DUPLICATE = "filters.duplicate"
+
 
 @dataclass
 class IncidenceAngleParams:
@@ -77,7 +82,7 @@ def build_incidence_angle_filter(
 
     # Use absolute value to keep points within +/- max_angle from nadir.
     return {
-        "type": "filters.expression",
+        "type": FilterType.EXPRESSION,
         "expression": f"abs(ScanAngleRank) <= {params.max_angle}",
     }
 
@@ -98,7 +103,7 @@ def build_intensity_filter(
     if not expressions:
         return None
 
-    return {"type": "filters.expression", "expression": " && ".join(expressions)}
+    return {"type": FilterType.EXPRESSION, "expression": " && ".join(expressions)}
 
 
 def build_range_filter(params: Optional[RangeParams]) -> Optional[Dict[str, Any]]:
@@ -111,7 +116,7 @@ def build_range_filter(params: Optional[RangeParams]) -> Optional[Dict[str, Any]
         return None
 
     conds = []
-    # Compute Euclidean distance from origin in the expression.
+    # Compute Euclidean distance from the origin in the expression.
     dist_expr = "sqrt(X*X + Y*Y + Z*Z)"
     if params.min_distance is not None:
         conds.append(f"{dist_expr} >= {params.min_distance}")
@@ -121,7 +126,7 @@ def build_range_filter(params: Optional[RangeParams]) -> Optional[Dict[str, Any]
     if not conds:
         return None
 
-    return {"type": "filters.expression", "expression": " && ".join(conds)}
+    return {"type": FilterType.EXPRESSION, "expression": " && ".join(conds)}
 
 
 def build_duplicate_filter(
@@ -134,7 +139,7 @@ def build_duplicate_filter(
     if not params or not params.enabled:
         return None
 
-    return {"type": "filters.unique"}
+    return {"type": FilterType.UNIQUE, "keep_first": True}
 
 
 # -------------------------------
@@ -205,14 +210,14 @@ def execute_pipeline(pipeline_dict: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         msg = str(e)
         # Detect missing plugin for duplicate/unique filters and retry without them
-        if "filters.unique" in msg or "filters.duplicate" in msg:
+        if FilterType.UNIQUE in msg or FilterType.DUPLICATE in msg:
             # Remove any duplicate/unique stages and retry once
             stages = [
                 s
                 for s in pipeline_dict.get("pipeline", [])
                 if not (
                         isinstance(s, dict)
-                        and s.get("type") in {"filters.unique", "filters.duplicate"}
+                        and s.get("type") in {FilterType.UNIQUE, FilterType.DUPLICATE}
                 )
             ]
             retry_dict = {"pipeline": stages}
